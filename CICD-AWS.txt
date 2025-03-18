@@ -1,0 +1,183 @@
+Segue uma estrutura completa para criar um pipeline CI/CD automatizado para deploy na infraestrutura AWS. Usaremos como base o **AWS CodePipeline** e integração com ferramentas como **AWS CodeBuild**, **CloudFormation** e **Elastic Beanstalk** (ou **ECS/EKS** dependendo do tipo de aplicação).
+Esta configuração automatiza o processo de build, teste e deploy da aplicação, garantindo automação de ponta a ponta, com suporte para pipelines locais usando **GitHub Actions** ou scripts CI com **Jenkins**.
+## Estrutura do Projeto
+Certifique-se de que seu projeto inclui:
+- **Dockerfile** (se sua aplicação estiver containerizada).
+- **buildspec.yml** (necessário para AWS CodeBuild ou pipelines locais).
+- **scripts de deploy** para manusear a aplicação na AWS.
+
+### Etapas do Pipeline CI/CD
+1. **Build e Testes**: Compilar, rodar testes unitários e gerar o pacote da aplicação (ex: JAR, imagem Docker).
+2. **Armazenar Artefatos**: Enviar o artefato gerado para um bucket S3 ou Elastic Container Registry (ECR).
+3. **Provisionar Infraestrutura**: Criar/Atualizar componentes AWS usando CloudFormation.
+4. **Deploy da Aplicação**: Fazer o deploy para plataformas gerenciadas da AWS como Elastic Beanstalk, ECS ou EC2.
+
+### Arquivo buildspec.yml
+**buildspec.yml** é o arquivo de configuração do **AWS CodeBuild**. Ele define as etapas de build e teste.
+Exemplo para realizar o Build do projeto e armazenar um artefato no S3:
+``` yaml
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Instalando Dependências"
+      - apt-get update
+      - apt-get install -y maven
+  build:
+    commands:
+      - echo "Construindo o JAR da Aplicação"
+      - mvn clean package
+      - echo "Build Concluído"
+  post_build:
+    commands:
+      - echo "Enviando Artefatos para o Bucket S3"
+      - aws s3 cp target/validaservico-0.0.1-SNAPSHOT.jar s3://seu-bucket-name/validaservico.jar
+
+artifacts:
+  files:
+    - target/validaservico-0.0.1-SNAPSHOT.jar
+```
+### Script para Deploy Automático
+Um exemplo de script de **deploy automatizado** usando AWS CLI. Ele cria/atualiza a infraestrutura e faz o deploy da aplicação:
+Crie o arquivo `scripts/deploy.sh`:
+``` bash
+#!/bin/bash
+
+set -e
+
+# Configurações
+AWS_REGION="us-east-1"
+S3_BUCKET="seu-bucket-name"
+APP_NAME="ValidaServicoApp"
+ENV_NAME="valida-servico-env"
+JAR_NAME="validaservico.jar"
+
+# 1. Upload do artefato ao S3
+echo "Fazendo upload do artefato para S3..."
+aws s3 cp "target/$JAR_NAME" "s3://$S3_BUCKET/$JAR_NAME" --region $AWS_REGION
+
+# 2. Atualizar Elastic Beanstalk com a nova versão
+echo "Criando Versão no Elastic Beanstalk..."
+aws elasticbeanstalk create-application-version \
+    --application-name "$APP_NAME" \
+    --version-label "$JAR_NAME-$(date +%s)" \
+    --source-bundle S3Bucket=$S3_BUCKET,S3Key=$JAR_NAME \
+    --region $AWS_REGION
+
+echo "Atualizando o ambiente para usar a nova versão..."
+aws elasticbeanstalk update-environment \
+    --application-name "$APP_NAME" \
+    --environment-name "$ENV_NAME" \
+    --version-label "$JAR_NAME-$(date +%s)" \
+    --region $AWS_REGION
+
+echo "Deploy concluído com sucesso!"
+```
+> Este exemplo é baseado no **Elastic Beanstalk**, mas você pode adaptá-lo para **ECS**, **EKS** ou EC2.
+> 
+
+### Configurando o CI/CD Local com GitHub Actions
+Aqui está um exemplo de pipeline **GitHub Actions** capaz de integrar com AWS para executar as etapas de build, teste e deploy.
+Crie um arquivo `.github/workflows/deploy.yml`:
+``` yaml
+name: CI/CD AWS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout do código
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 2. Configuração do AWS CLI
+    - name: Configure AWS CLI
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    # 3. Build da aplicação
+    - name: Build application using Maven
+      run: |
+        apt-get update && apt-get install -y maven
+        mvn clean package
+
+    # 4. Upload do artefato para S3
+    - name: Upload Build Artifact to S3
+      run: |
+        aws s3 cp target/validaservico-0.0.1-SNAPSHOT.jar s3://seu-bucket-name/validaservico.jar
+
+    # 5. Deploy para Elastic Beanstalk
+    - name: Deploy to Elastic Beanstalk
+      run: |
+        aws elasticbeanstalk create-application-version \
+            --application-name "ValidaServicoApp" \
+            --version-label "validaservico-$(date +%s)" \
+            --source-bundle S3Bucket=seu-bucket-name,S3Key=validaservico.jar
+
+        aws elasticbeanstalk update-environment \
+            --application-name "ValidaServicoApp" \
+            --environment-name "valida-servico-env" \
+            --version-label "validaservico-$(date +%s)"
+```
+> **Nota:** Certifique-se de configurar as _Secrets_ `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` no repositório do GitHub para permitir acesso às credenciais AWS.
+> 
+
+### CI/CD com Jenkins
+Criação de um pipeline Jenkinsfile:
+``` groovy
+pipeline {
+    agent any
+
+    environment {
+        AWS_DEFAULT_REGION = "us-east-1"
+        S3_BUCKET = "seu-bucket-name"
+        JAR_NAME = "validaservico.jar"
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('Upload to S3') {
+            steps {
+                sh 'aws s3 cp target/validaservico-0.0.1-SNAPSHOT.jar s3://${S3_BUCKET}/${JAR_NAME}'
+            }
+        }
+
+        stage('Deploy to Elastic Beanstalk') {
+            steps {
+                sh '''
+                aws elasticbeanstalk create-application-version \
+                    --application-name "ValidaServicoApp" \
+                    --version-label "${JAR_NAME}-$(date +%s)" \
+                    --source-bundle S3Bucket=${S3_BUCKET},S3Key=${JAR_NAME}
+
+                aws elasticbeanstalk update-environment \
+                    --application-name "ValidaServicoApp" \
+                    --environment-name "valida-servico-env" \
+                    --version-label "${JAR_NAME}-$(date +%s)"
+                '''
+            }
+        }
+    }
+}
+```
+## Considerações Finais
+- **Simplificação do Deploy:** Ferramentas como AWS Elastic Beanstalk ou CloudFormation ajudam a gerenciar a infraestrutura e realizar o deploy sem necessidade de reinventar a roda.
+- **Automatização Completa:** O uso de CI/CD local ou com nuvem garante que o pipeline seja acionado automaticamente ao realizar um commit na branch principal.
+- **Segurança:** Certifique-se de proteger credenciais sensíveis usando _Secrets_ em GitHub Actions ou Jenkins.
+
+Se precisar de ajuda com algum ponto ou se seu projeto tiver requisitos específicos, posso ajudar a adaptar.

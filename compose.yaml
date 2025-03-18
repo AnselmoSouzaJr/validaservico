@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  jwt-validator-service:
+    build:
+      context:  .
+      dockerfile: Dockerfile
+    ports:
+      - "5050:8080"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
