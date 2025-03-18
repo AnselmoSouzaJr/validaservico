@@ -14,6 +14,12 @@ A aplicação oferece uma API que valida JWTs seguindo as especificidades config
     - Decodificação do JWT para extrair as informações do payload sem a necessidade de validar a **Assinatura** (_Signed Key_).
     - Verificação do formato correto do token e de campos obrigatórios no payload (como emissor, data de expiração, etc.).
     - Não realiza a validação da assinatura (`signature key`) para permitir o processamento de tokens sem possuir a chave original.
+    - Deve ser um JWT válido
+    -  Deve conter apenas 3 claims (Name, Role e Seed)
+    - A claim Name não pode ter carácter de números
+    - A claim Role deve conter apenas 1 dos três valores (Admin, Member e External)
+    - A claim Seed deve ser um número primo.
+    - O tamanho máximo da claim Name é de 256 caracteres.
 
 ## Configuração de Segurança (SecurityConfig)
 Para que determinadas rotas do serviço sejam acessadas sem autenticação, foi necessário criar a classe **SecurityConfig**.
@@ -48,14 +54,10 @@ A API pode ser testada de duas formas: utilizando **Postman** ou **CURL**.
 #### 1. Com **Postman**
 Abaixo seguem os passos para realizar as chamadas:
 - Defina o método HTTP como **POST**.
-- Defina a URL como `http://localhost:8080/valida`.
-- No **body**, use o formato **JSON** e insira o token JWT:
-``` json
-  {
-      "jwt": "seu_token_aqui"
-  }
+- Defina a URL como `http://localhost:8080/api/jwt/validate.
+- o jwt deve ser passado com o parâmetro  "token" = seu_token_aqui
 ```
-- Envie a requisição. O retorno será um JSON indicando a validade do token ou detalhes de erro.
+- Envie a requisição. O retorno será uma string informando se o token é valido ou invalido.
 
 #### 2. Com **CURL**
 Exemplo de requisição utilizando cURL:
